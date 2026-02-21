@@ -5,7 +5,7 @@ import { ApiClient } from "../api-client.js";
 export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
         "get_nutrition_log",
-        "Get daily nutrition summaries showing calories, protein, carbs, fat, and goal adherence. Can also fetch individual food entries for a specific date.",
+        "Get daily nutrition data including calorie/macro summaries, the user's current goals and targets, and any day notes for context (e.g. 'I didn't log everything today', 'was sick'). Can also fetch individual food entries for a specific date.",
         {
             from: z.string().optional().describe("Start date (ISO 8601)"),
             to: z.string().optional().describe("End date (ISO 8601)"),

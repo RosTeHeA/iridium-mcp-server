@@ -10,7 +10,6 @@ import { registerBodyTools } from "./tools/body.js";
 import { registerProfileTools } from "./tools/profile.js";
 import { registerRecoveryTools } from "./tools/recovery.js";
 import { registerScheduleTools } from "./tools/schedule.js";
-import { registerNotesTools } from "./tools/notes.js";
 
 const syncId = process.env.IRIDIUM_SYNC_ID;
 const syncKey = process.env.IRIDIUM_SYNC_KEY;
@@ -36,7 +35,6 @@ registerBodyTools(server, apiClient);
 registerProfileTools(server, apiClient);
 registerRecoveryTools(server, apiClient);
 registerScheduleTools(server, apiClient);
-registerNotesTools(server, apiClient);
 
 async function main() {
     const transport = new StdioServerTransport();
