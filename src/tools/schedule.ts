@@ -11,14 +11,4 @@ export function registerScheduleTools(server: McpServer, api: ApiClient) {
             return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
         }
     );
-
-    server.tool(
-        "get_workout_templates",
-        "Get saved workout templates including exercise configurations, set schemes, and block structures.",
-        async () => {
-            const data = await api.get("/api/v1/data/templates");
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
-        }
-    );
 }
