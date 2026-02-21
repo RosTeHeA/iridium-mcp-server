@@ -1,0 +1,33 @@
+{
+  "name": "iridium-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Iridium fitness data — connects AI agents to your workout, nutrition, and training data",
+  "main": "build/index.js",
+  "bin": {
+    "iridium-mcp-server": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "fitness", "workout", "nutrition", "claude", "ai"],
+  "author": "Iridium",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "build/**/*.js",
+    "build/**/*.d.ts",
+    "README.md"
+  ]
+}
