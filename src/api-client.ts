@@ -1,4 +1,4 @@
-import { convertWeights } from "./utils/units.js";
+import { convertUnits } from "./utils/units.js";
 
 const BASE_URL = "https://datasync.iridium.fit";
 
@@ -83,12 +83,13 @@ export class ApiClient {
 
         const data = await response.json();
 
-        // Get user's unit preference and convert weights accordingly
-        // iOS app stores all weights in kg internally
+        // Get user's unit preference and convert units accordingly
+        // iOS app stores: weights in kg, distances in meters
+        // We convert weights based on user preference, distances based on per-set distanceUnit
         const unitSystem = await this.getUnitSystem();
-        const convertToLbs = unitSystem === "imperial";
+        const convertWeightsToLbs = unitSystem === "imperial";
         
-        return convertWeights(data, convertToLbs);
+        return convertUnits(data, convertWeightsToLbs);
     }
 
     /**
