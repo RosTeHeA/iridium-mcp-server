@@ -1,3 +1,5 @@
+import { convertWeightsToLbs } from "./utils/units.js";
+
 const BASE_URL = "https://datasync.iridium.fit";
 
 export class ApiClient {
@@ -33,7 +35,11 @@ export class ApiClient {
             throw new Error(`API request failed (${response.status}): ${body}`);
         }
 
-        return response.json();
+        const data = await response.json();
+        
+        // iOS app stores all weights in kg. Convert to lbs for display.
+        // The _units field already says "lbs" so we make the data match.
+        return convertWeightsToLbs(data);
     }
 
     /**
