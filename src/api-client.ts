@@ -1,14 +1,60 @@
-import { convertWeightsToLbs } from "./utils/units.js";
+import { convertWeights } from "./utils/units.js";
 
 const BASE_URL = "https://datasync.iridium.fit";
 
 export class ApiClient {
     private syncId: string;
     private syncKey: string;
+    private unitSystem: "imperial" | "metric" | null = null;
+    private unitSystemFetchPromise: Promise<"imperial" | "metric"> | null = null;
 
     constructor(syncId: string, syncKey: string) {
         this.syncId = syncId;
         this.syncKey = syncKey;
+    }
+
+    /**
+     * Fetch the user's unit system preference (cached after first call).
+     */
+    private async getUnitSystem(): Promise<"imperial" | "metric"> {
+        // Return cached value if available
+        if (this.unitSystem !== null) {
+            return this.unitSystem;
+        }
+
+        // If already fetching, wait for that promise
+        if (this.unitSystemFetchPromise !== null) {
+            return this.unitSystemFetchPromise;
+        }
+
+        // Fetch profile to get unit system
+        this.unitSystemFetchPromise = (async () => {
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/data/profile`, {
+                    method: "GET",
+                    headers: {
+                        "X-Sync-Id": this.syncId,
+                        "X-Sync-Key": this.syncKey,
+                        "Content-Type": "application/json",
+                    },
+                });
+
+                if (response.ok) {
+                    const profile = await response.json();
+                    const unitSystem = profile?.app_settings?.unit_system;
+                    this.unitSystem = unitSystem === "metric" ? "metric" : "imperial";
+                } else {
+                    // Default to imperial if profile fetch fails
+                    this.unitSystem = "imperial";
+                }
+            } catch {
+                // Default to imperial on error
+                this.unitSystem = "imperial";
+            }
+            return this.unitSystem;
+        })();
+
+        return this.unitSystemFetchPromise;
     }
 
     async get<T = any>(path: string, params?: Record<string, string | number | undefined>): Promise<T & { lastSyncAt: string | null }> {
@@ -36,10 +82,13 @@ export class ApiClient {
         }
 
         const data = await response.json();
+
+        // Get user's unit preference and convert weights accordingly
+        // iOS app stores all weights in kg internally
+        const unitSystem = await this.getUnitSystem();
+        const convertToLbs = unitSystem === "imperial";
         
-        // iOS app stores all weights in kg. Convert to lbs for display.
-        // The _units field already says "lbs" so we make the data match.
-        return convertWeightsToLbs(data);
+        return convertWeights(data, convertToLbs);
     }
 
     /**
