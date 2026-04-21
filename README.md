@@ -77,6 +77,7 @@ If you installed from source, use the absolute path instead:
 | `get_workout_detail` | Get full details of a specific workout (exercises, sets, weights, reps, RPE) |
 | `get_nutrition_log` | Get daily nutrition summaries (totals + goals + day notes) over a date range — use for trends and goal tracking |
 | `get_food_entries` | Get full individual food entries (name + every nutrient) for a day or date range up to 90 days — use when the question is about what was actually eaten |
+| `get_nutrition_goals` | Get the user's current nutrition intent — goal type (lose / maintain / gain), target weekly rate, and daily calorie / protein / carb / fat targets. Use when coaching or giving recommendations that depend on whether they are cutting, bulking, or maintaining |
 | `search_exercises` | Search the exercise database by name or muscle group |
 | `get_exercise_progress` | Get performance history and 1RM trends for a specific exercise |
 | `get_body_measurements` | Get body measurement history (weight, body fat, etc.) |
@@ -119,6 +120,14 @@ Once configured, you can ask Claude or ChatGPT things like:
 - "Where was most of my sugar coming from last week?"
 - "What does my training volume look like for chest?"
 - "What's my weekly training schedule?"
+
+**Coaching loops:**
+An agent checking in on the user throughout the day can build a live picture with three calls:
+1. `get_nutrition_goals` — what the user is targeting (cut / bulk / maintain + daily macro numbers)
+2. `get_food_entries(date: today)` — what has already been consumed
+3. `get_body_measurements` (as needed) — recent weight trend
+
+Then coach from there: "you have ~40 g of protein left and a calorie headroom of ~600, which fits a normal dinner given your slow-cut target of -1 lb/week."
 
 **Logging food:**
 - "Log a cheeseburger for lunch"

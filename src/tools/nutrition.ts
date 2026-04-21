@@ -31,6 +31,40 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
     );
 
     server.tool(
+        "get_nutrition_goals",
+        "Get the user's current nutrition intent — what they are trying to do with " +
+        "food right now. Returns: " +
+        "`goalType` (lose | maintain | gain), " +
+        "`weeklyWeightChangeGoal` (e.g. -1 for losing 1 per week; negative means loss, positive means gain) with `weeklyWeightChangeUnit` (lbs or kg), " +
+        "daily targets `calorieGoal` / `proteinGoal` / `carbGoal` / `fatGoal` (grams for macros), " +
+        "and mode context (`calorieGoalMode`, `macroDistributionMode`, `macroPriority`, `macroPresetSplit`). " +
+        "Use this when coaching the user (\"am I on track?\", \"how much protein is left for today?\", \"is this deficit aggressive or conservative?\"), or whenever your recommendation depends on whether they are cutting, bulking, or maintaining. " +
+        "Combine with `get_food_entries(date: today)` for what has already been consumed, or `get_nutrition_log` for multi-day trend context.",
+        {},
+        async () => {
+            try {
+                const data = await api.get("/api/v1/data/nutrition/goals");
+                const warning = api.formatStalenessWarning(data.lastSyncAt);
+                return {
+                    content: [{
+                        type: "text" as const,
+                        text: JSON.stringify(data, null, 2) + warning
+                    }]
+                };
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                return {
+                    content: [{
+                        type: "text" as const,
+                        text: `Failed to fetch nutrition goals: ${message}`
+                    }],
+                    isError: true,
+                };
+            }
+        }
+    );
+
+    server.tool(
         "get_food_entries",
         "Get full individual food entries with name, macros, and all nutrients — " +
         "for a single day or a date range (up to 90 days). Use this when the user " +
