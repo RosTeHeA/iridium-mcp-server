@@ -1,6 +1,6 @@
 # Iridium MCP Server
 
-An MCP (Model Context Protocol) server that connects AI agents like Claude to your Iridium fitness data. Query your workouts, nutrition, body measurements, training volume, and more directly from Claude Code or any MCP-compatible client.
+An MCP (Model Context Protocol) server that connects AI agents like Claude and ChatGPT to your Iridium fitness data. Query your workouts, nutrition, body measurements, and training volume — and log food entries directly into your Iridium diary while chatting — from Claude Code, Claude Desktop, ChatGPT, or any MCP-compatible client.
 
 ## Prerequisites
 
@@ -69,6 +69,8 @@ If you installed from source, use the absolute path instead:
 
 ## Available Tools
 
+### Read tools
+
 | Tool | Description |
 |------|-------------|
 | `get_workout_history` | Get recent workout history with optional date range and category filtering |
@@ -84,16 +86,42 @@ If you installed from source, use the absolute path instead:
 | `get_weekly_schedule` | Get the planned weekly training schedule |
 | `get_workout_templates` | Get saved workout templates with exercise configurations |
 
+### Write tools
+
+| Tool | Description |
+|------|-------------|
+| `log_food_entry` | Log a single food entry (name + macros) to the user's Iridium food diary |
+
+#### `log_food_entry` notes
+
+When the agent calls this tool, the entry lands on Iridium's backend immediately and is pulled into the iOS app on its next sync — typically within seconds when the app is foregrounded, otherwise on the next foreground or 5-minute polling tick. Entries that come from MCP are tagged with a "Chat" badge in the food log so the user can tell at a glance which entries were logged by an external chatbot.
+
+**Required:** `name`, `calories`, `protein`, `carbs`, `fat` (grams).
+
+**Important — totals, not per-serving:** calories and macros must be the totals for the amount actually consumed. If the user ate 2 servings of a 200-cal item, send `calories: 400`, not `calories: 200` with `numberOfServings: 2`. Iridium stores the values as-is and does not multiply.
+
+**Optional:** `date` (ISO 8601, defaults to now), `mealType` (`breakfast | lunch | dinner | snacks | preWorkout | postWorkout | other`, defaults to `snacks`), `numberOfServings`, `brand`, `notes`, plus any micros the agent is confident about — `fiber`, `sugar`, `sodium`, `cholesterol`, `saturatedFat`, `transFat`, `monounsaturatedFat`, `polyunsaturatedFat`, `potassium`, `calcium`, `iron`, `magnesium`, `zinc`, `vitaminA`, `vitaminB6`, `vitaminB12`, `vitaminC`, `vitaminD`, `vitaminE`, `vitaminK`, `folate`, `niacin`, `riboflavin`, `thiamin`, `caffeine`, `water`. Omit values the agent does not know rather than guessing.
+
+**Limits:** the endpoint accepts at most 10 writes/min and 200 writes/day per user; values beyond `calories ≤ 50000`, `protein/carbs/fat ≤ 5000`, `numberOfServings ≤ 100`, or strings beyond `name ≤ 200`/`brand ≤ 100`/`notes ≤ 1000` chars are rejected with HTTP 400.
+
 ## Example Usage
 
-Once configured, you can ask Claude things like:
+Once configured, you can ask Claude or ChatGPT things like:
 
+**Querying:**
 - "Show me my workouts from last week"
 - "How has my bench press progressed over the last 3 months?"
 - "What did I eat yesterday?"
 - "Am I hitting my protein goals?"
 - "What does my training volume look like for chest?"
 - "What's my weekly training schedule?"
+
+**Logging food:**
+- "Log a cheeseburger for lunch"
+- "Add a Snickers bar to my snacks"
+- "I just ate two scrambled eggs and a slice of toast — log that"
+
+The chatbot fills in macros from its own knowledge, calls `log_food_entry`, and the entry shows up in your Iridium food log on the next sync (within seconds when the app is open).
 
 ## Troubleshooting
 
