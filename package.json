@@ -1,6 +1,6 @@
 {
   "name": "iridium-mcp-server",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "MCP server for Iridium fitness data — connects AI agents to your workout, nutrition, and training data",
   "main": "build/index.js",
   "bin": {

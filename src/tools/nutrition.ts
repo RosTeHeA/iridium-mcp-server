@@ -4,6 +4,51 @@ import { ApiClient } from "../api-client.js";
 
 const optionalMicro = z.number().nonnegative().optional();
 
+/**
+ * Resolve the user's timezone for date-window queries. Explicit env var wins
+ * (lets users fix the tz when the MCP server runs somewhere other than their
+ * own device), otherwise fall back to the machine's local tz.
+ */
+function resolveUserTz(): string {
+    const fromEnv = process.env.IRIDIUM_USER_TZ;
+    if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+        return "UTC";
+    }
+}
+
+/** Format a Date as YYYY-MM-DD in the given tz (e.g. "2026-04-21"). */
+function localDateString(d: Date, tz: string): string {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(d);
+    const get = (t: string) => parts.find((p) => p.type === t)!.value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/**
+ * Normalize a user-facing date parameter. Accepts:
+ *   - "today" / "yesterday" → converted to local YYYY-MM-DD in user's tz
+ *   - "YYYY-MM-DD"          → passed through
+ *   - full ISO timestamp    → passed through
+ * Anything else is passed through unchanged.
+ */
+function normalizeDateParam(value: string | undefined, tz: string): string | undefined {
+    if (!value) return undefined;
+    const lower = value.trim().toLowerCase();
+    if (lower === "today") return localDateString(new Date(), tz);
+    if (lower === "yesterday") {
+        const y = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        return localDateString(y, tz);
+    }
+    return value;
+}
+
 export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
         "get_nutrition_log",
@@ -12,19 +57,29 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "notes (e.g. 'I didn't log everything today', 'was sick'). Use this for " +
         "trends, goal checking, and weekly/monthly review. " +
         "For individual food-level detail (name + all nutrients per entry), use " +
-        "`get_food_entries` instead.",
+        "`get_food_entries` instead. " +
+        "Dates accept 'today', 'yesterday', 'YYYY-MM-DD', or full ISO timestamps; " +
+        "bare dates are interpreted in the user's local timezone.",
         {
-            from: z.string().optional().describe("Start date (ISO 8601)"),
-            to: z.string().optional().describe("End date (ISO 8601)"),
+            from: z.string().optional().describe("Start date (YYYY-MM-DD, 'today', 'yesterday', or ISO 8601)"),
+            to: z.string().optional().describe("End date (YYYY-MM-DD, 'today', 'yesterday', or ISO 8601)"),
             date: z.string().optional().describe("DEPRECATED shortcut — returns individual entries for this date. Prefer `get_food_entries` for entry-level detail."),
         },
         async (params) => {
+            const tz = resolveUserTz();
             if (params.date) {
-                const data = await api.get("/api/v1/data/nutrition/entries", { date: params.date });
+                const data = await api.get("/api/v1/data/nutrition/entries", {
+                    date: normalizeDateParam(params.date, tz),
+                    tz,
+                });
                 const warning = api.formatStalenessWarning(data.lastSyncAt);
                 return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
             }
-            const data = await api.get("/api/v1/data/nutrition", { from: params.from, to: params.to });
+            const data = await api.get("/api/v1/data/nutrition", {
+                from: normalizeDateParam(params.from, tz),
+                to: normalizeDateParam(params.to, tz),
+                tz,
+            });
             const warning = api.formatStalenessWarning(data.lastSyncAt);
             return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
         }
@@ -73,13 +128,16 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "entry-level detail for analysis (meal patterns, top sources of a macro, " +
         "identifying repeat items, etc.). " +
         "For daily totals / goal tracking / trends, use `get_nutrition_log` instead. " +
-        "Pass EITHER `date` (single day) OR `from` + `to` (range). Ranges are " +
-        "inclusive on both ends and capped at 90 days; results are capped at " +
-        "1000 entries with a `truncated` flag if that cap hits.",
+        "Pass EITHER `date` (single day) OR `from` + `to` (range). " +
+        "Date parameters accept 'today', 'yesterday', 'YYYY-MM-DD', or full ISO " +
+        "timestamps; bare dates are interpreted in the user's LOCAL timezone so " +
+        "late-night meals correctly land on the same day the user went to bed. " +
+        "Ranges are inclusive on both ends and capped at 90 days; results are " +
+        "capped at 1000 entries with a `truncated` flag if that cap hits.",
         {
-            date: z.string().optional().describe("Single date (ISO 8601, e.g. '2026-04-21'). Use this OR from+to."),
-            from: z.string().optional().describe("Range start, ISO 8601. Requires `to`."),
-            to: z.string().optional().describe("Range end, ISO 8601, inclusive. Requires `from`."),
+            date: z.string().optional().describe("Single date: 'today', 'yesterday', 'YYYY-MM-DD', or ISO 8601. Use this OR from+to."),
+            from: z.string().optional().describe("Range start: 'today', 'yesterday', 'YYYY-MM-DD', or ISO 8601. Requires `to`."),
+            to: z.string().optional().describe("Range end (inclusive): 'today', 'yesterday', 'YYYY-MM-DD', or ISO 8601. Requires `from`."),
         },
         async (params) => {
             if (!params.date && !params.from && !params.to) {
@@ -92,10 +150,11 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
                 };
             }
             try {
-                const query: Record<string, string> = {};
-                if (params.date) query.date = params.date;
-                if (params.from) query.from = params.from;
-                if (params.to) query.to = params.to;
+                const tz = resolveUserTz();
+                const query: Record<string, string> = { tz };
+                if (params.date) query.date = normalizeDateParam(params.date, tz)!;
+                if (params.from) query.from = normalizeDateParam(params.from, tz)!;
+                if (params.to) query.to = normalizeDateParam(params.to, tz)!;
                 const data = await api.get("/api/v1/data/nutrition/entries", query);
                 const warning = api.formatStalenessWarning(data.lastSyncAt);
                 return {

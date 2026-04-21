@@ -50,6 +50,32 @@ Add the following to your Claude Code MCP settings (`~/.claude/claude_desktop_co
 }
 ```
 
+### Timezone (optional but recommended)
+
+Nutrition queries like "what did I eat today?" need to know the user's local timezone to pick the right day boundary — otherwise food logged late at night can spill into the next day's results.
+
+By default the server auto-detects the timezone of the machine it runs on. If the MCP server runs somewhere other than the user's local machine (e.g. a cloud-hosted agent), set `IRIDIUM_USER_TZ` to the user's IANA timezone:
+
+```json
+{
+  "mcpServers": {
+    "iridium": {
+      "command": "npx",
+      "args": ["iridium-mcp-server"],
+      "env": {
+        "IRIDIUM_SYNC_ID": "your-sync-id-here",
+        "IRIDIUM_SYNC_KEY": "your-sync-key-here",
+        "IRIDIUM_USER_TZ": "America/Denver"
+      }
+    }
+  }
+}
+```
+
+Leave it unset if the MCP server and the user are in the same timezone.
+
+---
+
 If you installed from source, use the absolute path instead:
 
 ```json
