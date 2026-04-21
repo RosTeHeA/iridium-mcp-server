@@ -85,12 +85,14 @@ If you installed from source, use the absolute path instead:
 | `get_trainer_analysis` | Get weekly AI trainer analysis logs with recommendations and insights |
 | `get_weekly_schedule` | Get the planned weekly training schedule |
 | `get_workout_templates` | Get saved workout templates with exercise configurations |
+| `list_my_foods` | List the user's saved reusable foods ("My Foods") — their homemade shakes, go-to bars, custom meals. Call this first when the user refers to a food by name as if it were already known |
 
 ### Write tools
 
 | Tool | Description |
 |------|-------------|
 | `log_food_entry` | Log a single food entry (name + macros) to the user's Iridium food diary |
+| `update_food_entry` | Update a food entry previously logged via `log_food_entry` — adjust servings, fix a macro, change the meal type, etc. Only works on chat-logged entries |
 
 #### `log_food_entry` notes
 
@@ -120,8 +122,17 @@ Once configured, you can ask Claude or ChatGPT things like:
 - "Log a cheeseburger for lunch"
 - "Add a Snickers bar to my snacks"
 - "I just ate two scrambled eggs and a slice of toast — log that"
+- "Log my blueberry shake" — the chatbot calls `list_my_foods` first, finds your saved MyFood, and reuses its macros
+- "Log another Nuun" — same path: recognized by name from your saved foods
 
-The chatbot fills in macros from its own knowledge, calls `log_food_entry`, and the entry shows up in your Iridium food log on the next sync (within seconds when the app is open).
+**Editing after the fact:**
+- "Wait, that was 2 cheeseburgers, not 1" — chatbot calls `update_food_entry` with the id from the prior log
+- "Actually make that a snack, not lunch"
+- "Drop the cheese on that burger"
+
+Edits only work on entries logged via chat. Entries you added directly in the Iridium app can only be edited in the app.
+
+The chatbot fills in macros from its own knowledge (or from your `list_my_foods` lookups), calls the relevant tool, and the change shows up in your Iridium food log on the next sync (within seconds when the app is open).
 
 ## Troubleshooting
 

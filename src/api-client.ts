@@ -113,6 +113,27 @@ export class ApiClient {
         return response.json();
     }
 
+    async put<T = any>(path: string, body: Record<string, any>): Promise<T> {
+        const url = new URL(path, BASE_URL);
+
+        const response = await fetch(url.toString(), {
+            method: "PUT",
+            headers: {
+                "X-Sync-Id": this.syncId,
+                "X-Sync-Key": this.syncKey,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`API request failed (${response.status}): ${text}`);
+        }
+
+        return response.json();
+    }
+
     /**
      * Returns a stale data warning string if data is older than 24 hours, or empty string.
      */
