@@ -75,7 +75,8 @@ If you installed from source, use the absolute path instead:
 |------|-------------|
 | `get_workout_history` | Get recent workout history with optional date range and category filtering |
 | `get_workout_detail` | Get full details of a specific workout (exercises, sets, weights, reps, RPE) |
-| `get_nutrition_log` | Get daily nutrition summaries or individual food entries for a specific date |
+| `get_nutrition_log` | Get daily nutrition summaries (totals + goals + day notes) over a date range — use for trends and goal tracking |
+| `get_food_entries` | Get full individual food entries (name + every nutrient) for a day or date range up to 90 days — use when the question is about what was actually eaten |
 | `search_exercises` | Search the exercise database by name or muscle group |
 | `get_exercise_progress` | Get performance history and 1RM trends for a specific exercise |
 | `get_body_measurements` | Get body measurement history (weight, body fat, etc.) |
@@ -113,8 +114,9 @@ Once configured, you can ask Claude or ChatGPT things like:
 **Querying:**
 - "Show me my workouts from last week"
 - "How has my bench press progressed over the last 3 months?"
-- "What did I eat yesterday?"
-- "Am I hitting my protein goals?"
+- "What did I eat yesterday?" / "Everything I logged the past 7 days" / "What's my Tuesday dinner this week?"
+- "Am I hitting my protein goals?" / "How did my calories trend this month?"
+- "Where was most of my sugar coming from last week?"
 - "What does my training volume look like for chest?"
 - "What's my weekly training schedule?"
 

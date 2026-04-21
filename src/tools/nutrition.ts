@@ -7,11 +7,16 @@ const optionalMicro = z.number().nonnegative().optional();
 export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
         "get_nutrition_log",
-        "Get daily nutrition data including calorie/macro summaries, the user's current goals and targets, and any day notes for context (e.g. 'I didn't log everything today', 'was sick'). Can also fetch individual food entries for a specific date.",
+        "Get DAILY NUTRITION SUMMARIES over a date range — one row per day with " +
+        "calorie/macro totals, the user's current goals and targets, and any day " +
+        "notes (e.g. 'I didn't log everything today', 'was sick'). Use this for " +
+        "trends, goal checking, and weekly/monthly review. " +
+        "For individual food-level detail (name + all nutrients per entry), use " +
+        "`get_food_entries` instead.",
         {
             from: z.string().optional().describe("Start date (ISO 8601)"),
             to: z.string().optional().describe("End date (ISO 8601)"),
-            date: z.string().optional().describe("Specific date to get individual food entries (ISO 8601). If provided, returns food-level detail instead of daily summaries."),
+            date: z.string().optional().describe("DEPRECATED shortcut — returns individual entries for this date. Prefer `get_food_entries` for entry-level detail."),
         },
         async (params) => {
             if (params.date) {
@@ -22,6 +27,59 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
             const data = await api.get("/api/v1/data/nutrition", { from: params.from, to: params.to });
             const warning = api.formatStalenessWarning(data.lastSyncAt);
             return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
+        }
+    );
+
+    server.tool(
+        "get_food_entries",
+        "Get full individual food entries with name, macros, and all nutrients — " +
+        "for a single day or a date range (up to 90 days). Use this when the user " +
+        "asks about WHAT they ate (\"what did I eat yesterday?\", \"show me everything " +
+        "I logged this week\", \"what was my dinner Tuesday?\") or when you need " +
+        "entry-level detail for analysis (meal patterns, top sources of a macro, " +
+        "identifying repeat items, etc.). " +
+        "For daily totals / goal tracking / trends, use `get_nutrition_log` instead. " +
+        "Pass EITHER `date` (single day) OR `from` + `to` (range). Ranges are " +
+        "inclusive on both ends and capped at 90 days; results are capped at " +
+        "1000 entries with a `truncated` flag if that cap hits.",
+        {
+            date: z.string().optional().describe("Single date (ISO 8601, e.g. '2026-04-21'). Use this OR from+to."),
+            from: z.string().optional().describe("Range start, ISO 8601. Requires `to`."),
+            to: z.string().optional().describe("Range end, ISO 8601, inclusive. Requires `from`."),
+        },
+        async (params) => {
+            if (!params.date && !params.from && !params.to) {
+                return {
+                    content: [{
+                        type: "text" as const,
+                        text: "Provide either `date` (single day) or `from` + `to` (range)."
+                    }],
+                    isError: true,
+                };
+            }
+            try {
+                const query: Record<string, string> = {};
+                if (params.date) query.date = params.date;
+                if (params.from) query.from = params.from;
+                if (params.to) query.to = params.to;
+                const data = await api.get("/api/v1/data/nutrition/entries", query);
+                const warning = api.formatStalenessWarning(data.lastSyncAt);
+                return {
+                    content: [{
+                        type: "text" as const,
+                        text: JSON.stringify(data, null, 2) + warning
+                    }]
+                };
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                return {
+                    content: [{
+                        type: "text" as const,
+                        text: `Failed to fetch food entries: ${message}`
+                    }],
+                    isError: true,
+                };
+            }
         }
     );
 
