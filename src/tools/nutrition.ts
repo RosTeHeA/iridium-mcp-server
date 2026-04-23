@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { ApiClient } from "../api-client.js";
 
 const optionalMicro = z.number().nonnegative().optional();
@@ -184,7 +185,8 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "NOT per-serving values. If the user ate 2 servings of a 200-cal item, send calories: 400. " +
         "Optional: any micros you are confident about (fiber, sugar, sodium, vitamins, etc.) — " +
         "omit values you don't know rather than guessing. " +
-        "The entry appears in the iOS app on the next sync (typically within minutes when the app is foregrounded).",
+        "The entry appears in the iOS app on the next sync (typically within minutes when the app is foregrounded). " +
+        "DEDUPLICATION: calls with identical arguments within one hour are deduplicated (the same entry is returned, not a new one). If the user genuinely ate the same thing twice and wants two entries, set `numberOfServings: 2` on a single call, OR include a differentiating value like a distinct `notes` line or a more specific `date` on the second call.",
         {
             // required
             name: z.string().min(1).max(200),
@@ -231,9 +233,32 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         },
         async (params) => {
             try {
+                // Content-based idempotency: prevents duplicate entries when the
+                // MCP client retries or the agent accidentally calls the tool
+                // twice with identical arguments. The backend caches results for
+                // 1 hour, so identical calls within that window dedupe.
+                //
+                // To force a new entry for a genuine repeat meal, pass any
+                // differentiating value (e.g. a timestamp in `notes`, a different
+                // `date`, or a different `numberOfServings`).
+                const idempotencyKey = createHash("sha256")
+                    .update(JSON.stringify({
+                        name: params.name,
+                        calories: params.calories,
+                        protein: params.protein,
+                        carbs: params.carbs,
+                        fat: params.fat,
+                        date: params.date ?? null,
+                        mealType: params.mealType ?? null,
+                        numberOfServings: params.numberOfServings ?? null,
+                        brand: params.brand ?? null,
+                        notes: params.notes ?? null,
+                    }))
+                    .digest("hex");
                 const data = await api.post<{ id: string; createdAt: string }>(
                     "/api/v1/data/nutrition/entries",
-                    params
+                    params,
+                    { idempotencyKey }
                 );
                 return {
                     content: [{

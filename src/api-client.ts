@@ -92,16 +92,25 @@ export class ApiClient {
         return convertUnits(data, convertWeightsToLbs);
     }
 
-    async post<T = any>(path: string, body: Record<string, any>): Promise<T> {
+    async post<T = any>(
+        path: string,
+        body: Record<string, any>,
+        options?: { idempotencyKey?: string }
+    ): Promise<T> {
         const url = new URL(path, BASE_URL);
+
+        const headers: Record<string, string> = {
+            "X-Sync-Id": this.syncId,
+            "X-Sync-Key": this.syncKey,
+            "Content-Type": "application/json",
+        };
+        if (options?.idempotencyKey) {
+            headers["X-Idempotency-Key"] = options.idempotencyKey;
+        }
 
         const response = await fetch(url.toString(), {
             method: "POST",
-            headers: {
-                "X-Sync-Id": this.syncId,
-                "X-Sync-Key": this.syncKey,
-                "Content-Type": "application/json",
-            },
+            headers,
             body: JSON.stringify(body),
         });
 
