@@ -60,7 +60,13 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "For individual food-level detail (name + all nutrients per entry), use " +
         "`get_food_entries` instead. " +
         "Dates accept 'today', 'yesterday', 'YYYY-MM-DD', or full ISO timestamps; " +
-        "bare dates are interpreted in the user's local timezone.",
+        "bare dates are interpreted in the user's local timezone. " +
+        "IMPORTANT — each summary row includes both `calorieGoal` (the static " +
+        "BASE: BMR ± weight-goal deficit, BEFORE activity) and `effectiveCalorieGoal` " +
+        "(the real daily target that includes activeCalories burned and the " +
+        "daily-minimum floor — matches what the Iridium app actually displays). " +
+        "ALWAYS compare consumed vs `effectiveCalorieGoal`, not `calorieGoal`. " +
+        "The same applies to the `goals` object at the top level for today.",
         {
             from: z.string().optional().describe("Start date (YYYY-MM-DD, 'today', 'yesterday', or ISO 8601)"),
             to: z.string().optional().describe("End date (YYYY-MM-DD, 'today', 'yesterday', or ISO 8601)"),
