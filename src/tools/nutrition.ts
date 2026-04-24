@@ -94,12 +94,18 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "`weeklyWeightChangeGoal` (e.g. -1 for losing 1 per week; negative means loss, positive means gain) with `weeklyWeightChangeUnit` (lbs or kg), " +
         "daily targets `calorieGoal` / `proteinGoal` / `carbGoal` / `fatGoal` (grams for macros), " +
         "and mode context (`calorieGoalMode`, `macroDistributionMode`, `macroPriority`, `macroPresetSplit`). " +
-        "Use this when coaching the user (\"am I on track?\", \"how much protein is left for today?\", \"is this deficit aggressive or conservative?\"), or whenever your recommendation depends on whether they are cutting, bulking, or maintaining. " +
-        "Combine with `get_food_entries(date: today)` for what has already been consumed, or `get_nutrition_log` for multi-day trend context.",
+        "IMPORTANT — `calorieGoal` is the LIVE EFFECTIVE target for today, matching what the Iridium app shows on the Nutrition tab. " +
+        "In automatic + HealthKit-active mode this includes today's active calories burned, so it changes throughout the day as the user moves. " +
+        "The static base (BMR ± deficit, before activity) is exposed separately as `calorieGoalBase`. " +
+        "When you compare consumed vs target, ALWAYS use `calorieGoal` (not `calorieGoalBase`). " +
+        "The optional `todaySnapshot` field breaks down where the number came from: `restingEnergyBurned` (BMR), `activeCalories`, `goalMode`, and `lastUpdated` (the iOS sync timestamp — be aware the active-calories number may be a few minutes stale). " +
+        "Use this when coaching the user (\"am I on track?\", \"how much room for dinner?\", \"is this deficit aggressive or conservative?\"), or whenever your recommendation depends on whether they are cutting, bulking, or maintaining. " +
+        "Combine with `get_food_entries(date: today)` for what has already been consumed.",
         {},
         async () => {
             try {
-                const data = await api.get("/api/v1/data/nutrition/goals");
+                const tz = resolveUserTz();
+                const data = await api.get("/api/v1/data/nutrition/goals", { tz });
                 const warning = api.formatStalenessWarning(data.lastSyncAt);
                 return {
                     content: [{
