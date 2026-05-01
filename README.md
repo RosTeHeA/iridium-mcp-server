@@ -52,9 +52,12 @@ Add the following to your Claude Code MCP settings (`~/.claude/claude_desktop_co
 
 ### Timezone (optional but recommended)
 
-Nutrition queries like "what did I eat today?" need to know the user's local timezone to pick the right day boundary — otherwise food logged late at night can spill into the next day's results.
+The user's timezone is used in two places:
 
-By default the server auto-detects the timezone of the machine it runs on. If the MCP server runs somewhere other than the user's local machine (e.g. a cloud-hosted agent), set `IRIDIUM_USER_TZ` to the user's IANA timezone:
+- **Read tools** like `get_nutrition_log` use it to pick day boundaries — otherwise food logged late at night can spill into the next day's results.
+- **Write tools** like `log_food_entry` use it to anchor relative dates: `"yesterday"`, `"today T14:00"`, or `"2026-04-29"` are interpreted in the user's local timezone, not UTC. Without this, an MDT user logging `"yesterday"` would land their food two days earlier in the iOS app (because UTC midnight is the previous evening locally).
+
+By default the server auto-detects the timezone of the machine it runs on. **The Iridium iOS app does not push the user's timezone to the server.** If the MCP server runs somewhere other than the user's own machine — a cloud-hosted agent, a VM, a server with a different system TZ — set `IRIDIUM_USER_TZ` to the user's IANA timezone:
 
 ```json
 {
@@ -72,7 +75,7 @@ By default the server auto-detects the timezone of the machine it runs on. If th
 }
 ```
 
-Leave it unset if the MCP server and the user are in the same timezone.
+Leave it unset if the MCP server and the user are in the same timezone (the typical Claude-Desktop-on-your-laptop setup).
 
 ---
 
@@ -130,7 +133,20 @@ When the agent calls this tool, the entry lands on Iridium's backend immediately
 
 **Important — totals, not per-serving:** calories and macros must be the totals for the amount actually consumed. If the user ate 2 servings of a 200-cal item, send `calories: 400`, not `calories: 200` with `numberOfServings: 2`. Iridium stores the values as-is and does not multiply.
 
-**Optional:** `date` (ISO 8601, defaults to now), `mealType` (`breakfast | lunch | dinner | snacks | preWorkout | postWorkout | other`, defaults to `snacks`), `numberOfServings`, `brand`, `notes`, plus any micros the agent is confident about — `fiber`, `sugar`, `sodium`, `cholesterol`, `saturatedFat`, `transFat`, `monounsaturatedFat`, `polyunsaturatedFat`, `potassium`, `calcium`, `iron`, `magnesium`, `zinc`, `vitaminA`, `vitaminB6`, `vitaminB12`, `vitaminC`, `vitaminD`, `vitaminE`, `vitaminK`, `folate`, `niacin`, `riboflavin`, `thiamin`, `caffeine`, `water`. Omit values the agent does not know rather than guessing.
+**Optional:** `date`, `mealType` (`breakfast | lunch | dinner | snacks | preWorkout | postWorkout | other`, defaults to `snacks`), `numberOfServings`, `brand`, `notes`, plus any micros the agent is confident about — `fiber`, `sugar`, `sodium`, `cholesterol`, `saturatedFat`, `transFat`, `monounsaturatedFat`, `polyunsaturatedFat`, `potassium`, `calcium`, `iron`, `magnesium`, `zinc`, `vitaminA`, `vitaminB6`, `vitaminB12`, `vitaminC`, `vitaminD`, `vitaminE`, `vitaminK`, `folate`, `niacin`, `riboflavin`, `thiamin`, `caffeine`, `water`. Omit values the agent does not know rather than guessing.
+
+**Date forms accepted by `date` (defaults to now):**
+
+| Form | Stored as |
+|------|-----------|
+| `"today"` | noon local today |
+| `"yesterday"` | noon local yesterday |
+| `"today T14:00"` / `"yesterday 14:30:00"` | that wall time, local that day |
+| `"2026-04-29"` | noon local on that date |
+| `"2026-04-29T14:00:00"` (no offset) | wall time, user's local TZ |
+| `"2026-04-29T14:00:00-06:00"` / `"…Z"` | passed through unchanged |
+
+All bare and relative forms are anchored in the user's local timezone (see [Timezone](#timezone-optional-but-recommended) above) — agents do not need to know the user's timezone to log food correctly. Bare dates anchor to noon to avoid drift across DST transitions.
 
 **Limits:** the endpoint accepts at most 10 writes/min and 200 writes/day per user; values beyond `calories ≤ 50000`, `protein/carbs/fat ≤ 5000`, `numberOfServings ≤ 100`, or strings beyond `name ≤ 200`/`brand ≤ 100`/`notes ≤ 1000` chars are rejected with HTTP 400.
 
