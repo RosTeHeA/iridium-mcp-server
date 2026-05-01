@@ -50,6 +50,122 @@ function normalizeDateParam(value: string | undefined, tz: string): string | und
     return value;
 }
 
+/**
+ * Compute the IANA `tz`'s UTC offset for the given instant, formatted as
+ * "+HH:MM" or "-HH:MM". Two-pass calculation handles DST boundaries.
+ */
+function tzOffsetSuffix(instant: Date, tz: string): string {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        hour12: false,
+    });
+    const parts = dtf.formatToParts(instant);
+    const get = (t: string) => {
+        const part = parts.find((p) => p.type === t);
+        return part ? parseInt(part.value, 10) : 0;
+    };
+    let lh = get("hour");
+    if (lh === 24) lh = 0;
+    const localAsUTC = Date.UTC(get("year"), get("month") - 1, get("day"), lh, get("minute"), get("second"));
+    const offsetMs = localAsUTC - instant.getTime();
+    const sign = offsetMs >= 0 ? "+" : "-";
+    const abs = Math.abs(offsetMs);
+    const hh = String(Math.floor(abs / 3_600_000)).padStart(2, "0");
+    const mm = String(Math.floor((abs % 3_600_000) / 60_000)).padStart(2, "0");
+    return `${sign}${hh}:${mm}`;
+}
+
+/**
+ * Build a fully-qualified ISO 8601 timestamp from local wall-time components,
+ * anchored in `tz`. Output: "YYYY-MM-DDTHH:MM:SS±HH:MM".
+ *
+ * Uses noon UTC on the target date as the reference instant for the offset
+ * lookup, which is stable across DST transitions in every region (transitions
+ * happen at 02:00–03:00 local, never at noon).
+ */
+function wallTimeAsLocalISO(dateStr: string, h: number, m: number, s: number, tz: string): string {
+    const [y, mo, d] = dateStr.split("-").map((n) => parseInt(n, 10));
+    const refInstant = new Date(Date.UTC(y!, mo! - 1, d!, 12, 0, 0));
+    const offset = tzOffsetSuffix(refInstant, tz);
+    const hh = String(h).padStart(2, "0");
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+    return `${dateStr}T${hh}:${mm}:${ss}${offset}`;
+}
+
+/**
+ * Normalize a user-facing date string for *logging* into a fully-qualified
+ * ISO 8601 timestamp anchored in the user's local timezone. Prevents the
+ * "log for yesterday → lands two days ago" bug, where bare YYYY-MM-DD strings
+ * downstream parse as UTC midnight (which is the previous day in any
+ * negative-offset zone).
+ *
+ * Accepts:
+ *   - undefined → undefined (caller defaults to "now")
+ *   - "today" / "yesterday" → noon-local that day
+ *   - "today T14:00" / "yesterday 14:00:00" → that wall time, local that day
+ *   - "YYYY-MM-DD" → noon-local on that date
+ *   - "YYYY-MM-DDTHH:MM[:SS[.SSS]]" without offset → that wall time, local
+ *   - Anything ending in `Z` or `±HH[:]MM` → passed through unchanged
+ */
+function normalizeLogDate(value: string | undefined, tz: string): string | undefined {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return undefined;
+
+    // Already has explicit timezone (Z or ±HH:MM): trust it.
+    if (/[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed)) {
+        return trimmed;
+    }
+
+    // "today" / "yesterday" with optional time component.
+    const relMatch = trimmed.match(
+        /^(today|yesterday)(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i
+    );
+    if (relMatch) {
+        const keyword = relMatch[1]!.toLowerCase() as "today" | "yesterday";
+        const baseMs = keyword === "yesterday"
+            ? Date.now() - 24 * 60 * 60 * 1000
+            : Date.now();
+        const dateStr = localDateString(new Date(baseMs), tz);
+        const hh = relMatch[2];
+        if (hh) {
+            return wallTimeAsLocalISO(
+                dateStr,
+                parseInt(hh, 10),
+                parseInt(relMatch[3]!, 10),
+                relMatch[4] ? parseInt(relMatch[4], 10) : 0,
+                tz
+            );
+        }
+        return wallTimeAsLocalISO(dateStr, 12, 0, 0, tz);
+    }
+
+    // Bare YYYY-MM-DD → noon-local on that date.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return wallTimeAsLocalISO(trimmed, 12, 0, 0, tz);
+    }
+
+    // "YYYY-MM-DDTHH:MM[:SS[.SSS]]" without timezone → wall time, local.
+    const wallMatch = trimmed.match(
+        /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/
+    );
+    if (wallMatch) {
+        return wallTimeAsLocalISO(
+            wallMatch[1]!,
+            parseInt(wallMatch[2]!, 10),
+            parseInt(wallMatch[3]!, 10),
+            wallMatch[4] ? parseInt(wallMatch[4], 10) : 0,
+            tz
+        );
+    }
+
+    // Unknown shape — let the server handle/reject.
+    return trimmed;
+}
+
 export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
         "get_nutrition_log",
@@ -198,6 +314,9 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "Optional: any micros you are confident about (fiber, sugar, sodium, vitamins, etc.) — " +
         "omit values you don't know rather than guessing. " +
         "The entry appears in the iOS app on the next sync (typically within minutes when the app is foregrounded). " +
+        "DATE/TIMEZONE: pass `date` in any of these forms — 'today', 'yesterday', 'YYYY-MM-DD', " +
+        "'today T14:00', 'yesterday 14:30', 'YYYY-MM-DDTHH:MM:SS', or a full ISO 8601 timestamp with offset. " +
+        "All bare/relative forms are interpreted in the user's local timezone, so 'yesterday' lands on the user's yesterday — you do not need to know their timezone. " +
         "DEDUPLICATION: calls with identical arguments within one hour are deduplicated (the same entry is returned, not a new one). If the user genuinely ate the same thing twice and wants two entries, set `numberOfServings: 2` on a single call, OR include a differentiating value like a distinct `notes` line or a more specific `date` on the second call.",
         {
             // required
@@ -207,7 +326,12 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
             carbs: z.number().nonnegative().max(5000),
             fat: z.number().nonnegative().max(5000),
             // optional core
-            date: z.string().optional().describe("ISO 8601 timestamp; defaults to now"),
+            date: z.string().optional().describe(
+                "When the user ate. Accepts 'today', 'yesterday', 'YYYY-MM-DD', 'today T14:00', " +
+                "'yesterday 14:30', 'YYYY-MM-DDTHH:MM:SS', or full ISO 8601 with timezone " +
+                "(e.g. '2026-04-29T14:00:00-06:00'). Bare dates anchor to noon local; relative " +
+                "keywords resolve in the user's timezone. Defaults to now."
+            ),
             mealType: z.enum([
                 "breakfast", "lunch", "dinner", "snacks",
                 "preWorkout", "postWorkout", "other"
@@ -245,6 +369,14 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         },
         async (params) => {
             try {
+                // Resolve relative ("yesterday") and bare ("YYYY-MM-DD") forms
+                // into a fully-qualified ISO timestamp anchored in the user's
+                // tz before doing anything else. Idempotency hashes the
+                // normalized value so repeated "today" calls still dedupe.
+                const tz = resolveUserTz();
+                const normalizedDate = normalizeLogDate(params.date, tz);
+                const payload = { ...params, date: normalizedDate };
+
                 // Content-based idempotency: prevents duplicate entries when the
                 // MCP client retries or the agent accidentally calls the tool
                 // twice with identical arguments. The backend caches results for
@@ -260,7 +392,7 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
                         protein: params.protein,
                         carbs: params.carbs,
                         fat: params.fat,
-                        date: params.date ?? null,
+                        date: normalizedDate ?? null,
                         mealType: params.mealType ?? null,
                         numberOfServings: params.numberOfServings ?? null,
                         brand: params.brand ?? null,
@@ -269,7 +401,7 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
                     .digest("hex");
                 const data = await api.post<{ id: string; createdAt: string }>(
                     "/api/v1/data/nutrition/entries",
-                    params,
+                    payload,
                     { idempotencyKey }
                 );
                 return {
@@ -308,7 +440,11 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
             protein: z.number().nonnegative().max(5000).optional(),
             carbs: z.number().nonnegative().max(5000).optional(),
             fat: z.number().nonnegative().max(5000).optional(),
-            date: z.string().optional(),
+            date: z.string().optional().describe(
+                "Same forms as log_food_entry: 'today', 'yesterday', 'YYYY-MM-DD', " +
+                "'yesterday 14:30', 'YYYY-MM-DDTHH:MM:SS', or full ISO 8601 with timezone. " +
+                "Bare/relative forms resolve in the user's local timezone."
+            ),
             mealType: z.enum([
                 "breakfast", "lunch", "dinner", "snacks",
                 "preWorkout", "postWorkout", "other"
@@ -353,6 +489,11 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
                     }],
                     isError: true,
                 };
+            }
+            // Match log_food_entry's date handling so 'yesterday' / 'YYYY-MM-DD'
+            // anchor in the user's local tz rather than UTC midnight.
+            if (fields.date !== undefined) {
+                fields.date = normalizeLogDate(fields.date, resolveUserTz());
             }
             try {
                 const data = await api.put<{ id: string; updatedAt: string }>(
