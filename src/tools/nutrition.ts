@@ -170,18 +170,19 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
         "get_nutrition_log",
         "Get DAILY NUTRITION SUMMARIES over a date range — one row per day with " +
-        "calorie/macro totals, the user's current goals and targets, and any day " +
-        "notes (e.g. 'I didn't log everything today', 'was sick'). Use this for " +
-        "trends, goal checking, and weekly/monthly review. " +
+        "the user's actual consumed totals (live, computed from the food log on every call), " +
+        "their goals and targets for that day, and any day notes (e.g. 'I didn't log everything today', 'was sick'). " +
+        "Use this for daily check-ins, trends, goal checking, and weekly/monthly review. " +
         "For individual food-level detail (name + all nutrients per entry), use " +
         "`get_food_entries` instead. " +
         "Dates accept 'today', 'yesterday', 'YYYY-MM-DD', or full ISO timestamps; " +
         "bare dates are interpreted in the user's local timezone. " +
-        "IMPORTANT — each summary row includes both `calorieGoal` (the static " +
-        "BASE: BMR ± weight-goal deficit, BEFORE activity) and `effectiveCalorieGoal` " +
-        "(the real daily target that includes activeCalories burned and the " +
-        "daily-minimum floor — matches what the Iridium app actually displays). " +
-        "ALWAYS compare consumed vs `effectiveCalorieGoal`, not `calorieGoal`. " +
+        "IMPORTANT — each summary row includes: " +
+        "(a) `consumed` — an object with the day's actual totals (calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, saturatedFat, transFat); always live, includes food logged via this tool earlier even before the iOS app has synced, " +
+        "(b) `calorieGoal` — the static BASE: BMR ± weight-goal deficit, BEFORE activity, " +
+        "(c) `effectiveCalorieGoal` — the real daily target that includes activeCalories burned and the daily-minimum floor; matches what the Iridium app actually displays. " +
+        "ALWAYS compare `consumed.calories` vs `effectiveCalorieGoal`, not vs `calorieGoal`. " +
+        "Some rows may have `consumed` populated but no goal fields — that's a day where food was logged before any goal-bearing data existed for that day; fall back to the top-level `goals` for targets. " +
         "The same applies to the `goals` object at the top level for today.",
         {
             from: z.string().optional().describe("Start date (YYYY-MM-DD, 'today', 'yesterday', or ISO 8601)"),
