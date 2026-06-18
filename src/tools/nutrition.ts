@@ -171,7 +171,7 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "get_nutrition_log",
         "Get DAILY NUTRITION SUMMARIES over a date range — one row per day with " +
         "the user's actual consumed totals (live, computed from the food log on every call), " +
-        "their goals and targets for that day, and any day notes (e.g. 'I didn't log everything today', 'was sick'). " +
+        "their goals and targets for that day, hydration intake/goal when available, and any day notes (e.g. 'I didn't log everything today', 'was sick'). " +
         "Use this for daily check-ins, trends, goal checking, and weekly/monthly review. " +
         "For individual food-level detail (name + all nutrients per entry), use " +
         "`get_food_entries` instead. " +
@@ -181,7 +181,9 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "(a) `consumed` — an object with the day's actual totals (calories, protein, carbs, fat, fiber, sugar, sodium, cholesterol, saturatedFat, transFat); always live, includes food logged via this tool earlier even before the iOS app has synced, " +
         "(b) `calorieGoal` — the static BASE: BMR ± weight-goal deficit, BEFORE activity, " +
         "(c) `effectiveCalorieGoal` — the real daily target that includes activeCalories burned and the daily-minimum floor; matches what the Iridium app actually displays. " +
+        "(d) `hydration` — an object with `consumedML`, `goalML`, `remainingML`, `progress`, and individual hydration `entries` when hydration data exists. " +
         "ALWAYS compare `consumed.calories` vs `effectiveCalorieGoal`, not vs `calorieGoal`. " +
+        "For water/hydration, compare `hydration.consumedML` vs `hydration.goalML` when `goalML` is present. " +
         "Some rows may have `consumed` populated but no goal fields — that's a day where food was logged before any goal-bearing data existed for that day; fall back to the top-level `goals` for targets. " +
         "The same applies to the `goals` object at the top level for today.",
         {
@@ -216,12 +218,13 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "`goalType` (lose | maintain | gain), " +
         "`weeklyWeightChangeGoal` (e.g. -1 for losing 1 per week; negative means loss, positive means gain) with `weeklyWeightChangeUnit` (lbs or kg), " +
         "daily targets `calorieGoal` / `proteinGoal` / `carbGoal` / `fatGoal` (grams for macros), " +
+        "hydration fields when available (`hydrationGoalML`, `hydrationGoalOz`, and `hydration` for today's consumed/goal/progress), " +
         "and mode context (`calorieGoalMode`, `macroDistributionMode`, `macroPriority`, `macroPresetSplit`). " +
         "IMPORTANT — `calorieGoal` is the LIVE EFFECTIVE target for today, matching what the Iridium app shows on the Nutrition tab. " +
         "In automatic + HealthKit-active mode this includes today's active calories burned, so it changes throughout the day as the user moves. " +
         "The static base (BMR ± deficit, before activity) is exposed separately as `calorieGoalBase`. " +
         "When you compare consumed vs target, ALWAYS use `calorieGoal` (not `calorieGoalBase`). " +
-        "The optional `todaySnapshot` field breaks down where the number came from: `restingEnergyBurned` (BMR), `activeCalories`, `goalMode`, and `lastUpdated` (the iOS sync timestamp — be aware the active-calories number may be a few minutes stale). " +
+        "The optional `todaySnapshot` field breaks down where the number came from: `restingEnergyBurned` (BMR), `activeCalories`, `goalMode`, `hydration`, and `lastUpdated` (the iOS sync timestamp — be aware the active-calories and hydration numbers may be a few minutes stale). " +
         "Use this when coaching the user (\"am I on track?\", \"how much room for dinner?\", \"is this deficit aggressive or conservative?\"), or whenever your recommendation depends on whether they are cutting, bulking, or maintaining. " +
         "Combine with `get_food_entries(date: today)` for what has already been consumed.",
         {},
@@ -252,6 +255,7 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
         "get_food_entries",
         "Get full individual food entries with name, macros, and all nutrients — " +
+        "plus hydration entries and a `hydrationByDay` rollup with consumed water and saved daily goals when available — " +
         "for a single day or a date range (up to 90 days). Use this when the user " +
         "asks about WHAT they ate (\"what did I eat yesterday?\", \"show me everything " +
         "I logged this week\", \"what was my dinner Tuesday?\") or when you need " +
