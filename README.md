@@ -107,15 +107,14 @@ If you installed from source, use the absolute path instead:
 | `get_nutrition_log` | Get daily nutrition summaries (totals + goals + day notes) over a date range — use for trends and goal tracking |
 | `get_food_entries` | Get full individual food entries (name + every nutrient) for a day or date range up to 90 days — use when the question is about what was actually eaten |
 | `get_nutrition_goals` | Get the user's current nutrition intent — goal type (lose / maintain / gain), target weekly rate, and daily calorie / protein / carb / fat targets. Use when coaching or giving recommendations that depend on whether they are cutting, bulking, or maintaining |
-| `search_exercises` | Search the exercise database by name or muscle group |
 | `get_exercise_progress` | Get performance history and 1RM trends for a specific exercise |
+| `get_personal_records` | Get PRs across all exercises or one exercise — best 1RM, heaviest weight, most reps, and when each was set |
 | `get_body_measurements` | Get body measurement history (weight, body fat, etc.) |
 | `get_profile` | Get user profile including training goals, methodology, and experience level |
 | `get_training_summary` | Get aggregate training statistics (total workouts, streaks, patterns) |
 | `get_training_volume` | Get volume adaptation records per muscle group with fatigue and recovery data |
 | `get_trainer_analysis` | Get weekly AI trainer analysis logs with recommendations and insights |
 | `get_weekly_schedule` | Get the planned weekly training schedule |
-| `get_workout_templates` | Get saved workout templates with exercise configurations |
 | `list_my_foods` | List the user's saved reusable foods ("My Foods") — their homemade shakes, go-to bars, custom meals. Call this first when the user refers to a food by name as if it were already known |
 
 ### Write tools
@@ -130,6 +129,8 @@ If you installed from source, use the absolute path instead:
 When the agent calls this tool, the entry lands on Iridium's backend immediately and is pulled into the iOS app on its next sync — typically within seconds when the app is foregrounded, otherwise on the next foreground or 5-minute polling tick. Entries that come from MCP are tagged with a "Chat" badge in the food log so the user can tell at a glance which entries were logged by an external chatbot.
 
 **Required:** `name`, `calories`, `protein`, `carbs`, `fat` (grams).
+
+**Note on `notes`:** the backend appends `"Added by another AI agent"` to every entry logged through this tool (on its own line, after any `notes` you pass). If the agent reads the entry back later, that line will be there even though it did not send it.
 
 **Important — totals, not per-serving:** calories and macros must be the totals for the amount actually consumed. If the user ate 2 servings of a 200-cal item, send `calories: 400`, not `calories: 200` with `numberOfServings: 2`. Iridium stores the values as-is and does not multiply.
 
@@ -149,6 +150,17 @@ When the agent calls this tool, the entry lands on Iridium's backend immediately
 All bare and relative forms are anchored in the user's local timezone (see [Timezone](#timezone-optional-but-recommended) above) — agents do not need to know the user's timezone to log food correctly. Bare dates anchor to noon to avoid drift across DST transitions.
 
 **Limits:** the endpoint accepts at most 10 writes/min and 200 writes/day per user; values beyond `calories ≤ 50000`, `protein/carbs/fat ≤ 5000`, `numberOfServings ≤ 100`, or strings beyond `name ≤ 200`/`brand ≤ 100`/`notes ≤ 1000` chars are rejected with HTTP 400.
+
+### Units
+
+Weights and distances are converted **server-side**, from the unit system set in the Iridium app (Settings > Units). Responses that contain either carry a `_units` object describing what you are looking at — this server does not convert anything itself.
+
+Two things worth knowing when reading workout data:
+
+- **`weight` is the total load lifted.** On exercises configured as two-dumbbell or dual-stack, the Iridium app displays half that figure. Those sets also carry `per_implement_weight` and `per_implement_label` (`"per dumbbell"` / `"per stack"`) — quote those when describing what the user actually held, and use `weight` for volume math.
+- **Distances are per-set.** Each set records its own `distance_unit` (`m`, `km`, `mi`, `ft`, `yd`) and `distance` is already expressed in it.
+
+Body measurements carry a per-measurement `unit`. Mass types (weight, muscle mass, visceral fat mass) are converted to lbs or kg; body fat is a percentage; circumference measurements have a `null` unit because the app stores exactly the number the user typed without recording whether it was cm or inches.
 
 ## Example Usage
 
@@ -223,9 +235,17 @@ npm run build
 # Watch mode (rebuild on changes)
 npm run dev
 
+# Run the test suite (builds first, then runs against build/)
+npm test
+
 # Run directly
 IRIDIUM_SYNC_ID=xxx IRIDIUM_SYNC_KEY=yyy npm start
 ```
+
+Tests cover the timezone/date helpers (`src/utils/dates.ts`) and the idempotency
+serializer (`src/utils/stable-json.ts`) — the two places where a subtle bug
+silently lands a user's food on the wrong day or silently discards a correction.
+Requires Node 22.18+ or 24+ for native TypeScript type stripping.
 
 ## License
 

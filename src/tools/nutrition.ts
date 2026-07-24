@@ -2,169 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { ApiClient } from "../api-client.js";
+import { readTool } from "./shared.js";
+import {
+    resolveUserTz,
+    normalizeDateParam,
+    normalizeLogDate,
+} from "../utils/dates.js";
+import { stableStringify } from "../utils/stable-json.js";
 
 const optionalMicro = z.number().nonnegative().optional();
-
-/**
- * Resolve the user's timezone for date-window queries. Explicit env var wins
- * (lets users fix the tz when the MCP server runs somewhere other than their
- * own device), otherwise fall back to the machine's local tz.
- */
-function resolveUserTz(): string {
-    const fromEnv = process.env.IRIDIUM_USER_TZ;
-    if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    } catch {
-        return "UTC";
-    }
-}
-
-/** Format a Date as YYYY-MM-DD in the given tz (e.g. "2026-04-21"). */
-function localDateString(d: Date, tz: string): string {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: tz,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-    }).formatToParts(d);
-    const get = (t: string) => parts.find((p) => p.type === t)!.value;
-    return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
-/**
- * Normalize a user-facing date parameter. Accepts:
- *   - "today" / "yesterday" → converted to local YYYY-MM-DD in user's tz
- *   - "YYYY-MM-DD"          → passed through
- *   - full ISO timestamp    → passed through
- * Anything else is passed through unchanged.
- */
-function normalizeDateParam(value: string | undefined, tz: string): string | undefined {
-    if (!value) return undefined;
-    const lower = value.trim().toLowerCase();
-    if (lower === "today") return localDateString(new Date(), tz);
-    if (lower === "yesterday") {
-        const y = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        return localDateString(y, tz);
-    }
-    return value;
-}
-
-/**
- * Compute the IANA `tz`'s UTC offset for the given instant, formatted as
- * "+HH:MM" or "-HH:MM". Two-pass calculation handles DST boundaries.
- */
-function tzOffsetSuffix(instant: Date, tz: string): string {
-    const dtf = new Intl.DateTimeFormat("en-US", {
-        timeZone: tz,
-        year: "numeric", month: "2-digit", day: "2-digit",
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
-        hour12: false,
-    });
-    const parts = dtf.formatToParts(instant);
-    const get = (t: string) => {
-        const part = parts.find((p) => p.type === t);
-        return part ? parseInt(part.value, 10) : 0;
-    };
-    let lh = get("hour");
-    if (lh === 24) lh = 0;
-    const localAsUTC = Date.UTC(get("year"), get("month") - 1, get("day"), lh, get("minute"), get("second"));
-    const offsetMs = localAsUTC - instant.getTime();
-    const sign = offsetMs >= 0 ? "+" : "-";
-    const abs = Math.abs(offsetMs);
-    const hh = String(Math.floor(abs / 3_600_000)).padStart(2, "0");
-    const mm = String(Math.floor((abs % 3_600_000) / 60_000)).padStart(2, "0");
-    return `${sign}${hh}:${mm}`;
-}
-
-/**
- * Build a fully-qualified ISO 8601 timestamp from local wall-time components,
- * anchored in `tz`. Output: "YYYY-MM-DDTHH:MM:SS±HH:MM".
- *
- * Uses noon UTC on the target date as the reference instant for the offset
- * lookup, which is stable across DST transitions in every region (transitions
- * happen at 02:00–03:00 local, never at noon).
- */
-function wallTimeAsLocalISO(dateStr: string, h: number, m: number, s: number, tz: string): string {
-    const [y, mo, d] = dateStr.split("-").map((n) => parseInt(n, 10));
-    const refInstant = new Date(Date.UTC(y!, mo! - 1, d!, 12, 0, 0));
-    const offset = tzOffsetSuffix(refInstant, tz);
-    const hh = String(h).padStart(2, "0");
-    const mm = String(m).padStart(2, "0");
-    const ss = String(s).padStart(2, "0");
-    return `${dateStr}T${hh}:${mm}:${ss}${offset}`;
-}
-
-/**
- * Normalize a user-facing date string for *logging* into a fully-qualified
- * ISO 8601 timestamp anchored in the user's local timezone. Prevents the
- * "log for yesterday → lands two days ago" bug, where bare YYYY-MM-DD strings
- * downstream parse as UTC midnight (which is the previous day in any
- * negative-offset zone).
- *
- * Accepts:
- *   - undefined → undefined (caller defaults to "now")
- *   - "today" / "yesterday" → noon-local that day
- *   - "today T14:00" / "yesterday 14:00:00" → that wall time, local that day
- *   - "YYYY-MM-DD" → noon-local on that date
- *   - "YYYY-MM-DDTHH:MM[:SS[.SSS]]" without offset → that wall time, local
- *   - Anything ending in `Z` or `±HH[:]MM` → passed through unchanged
- */
-function normalizeLogDate(value: string | undefined, tz: string): string | undefined {
-    if (!value) return undefined;
-    const trimmed = value.trim();
-    if (trimmed.length === 0) return undefined;
-
-    // Already has explicit timezone (Z or ±HH:MM): trust it.
-    if (/[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed)) {
-        return trimmed;
-    }
-
-    // "today" / "yesterday" with optional time component.
-    const relMatch = trimmed.match(
-        /^(today|yesterday)(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i
-    );
-    if (relMatch) {
-        const keyword = relMatch[1]!.toLowerCase() as "today" | "yesterday";
-        const baseMs = keyword === "yesterday"
-            ? Date.now() - 24 * 60 * 60 * 1000
-            : Date.now();
-        const dateStr = localDateString(new Date(baseMs), tz);
-        const hh = relMatch[2];
-        if (hh) {
-            return wallTimeAsLocalISO(
-                dateStr,
-                parseInt(hh, 10),
-                parseInt(relMatch[3]!, 10),
-                relMatch[4] ? parseInt(relMatch[4], 10) : 0,
-                tz
-            );
-        }
-        return wallTimeAsLocalISO(dateStr, 12, 0, 0, tz);
-    }
-
-    // Bare YYYY-MM-DD → noon-local on that date.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        return wallTimeAsLocalISO(trimmed, 12, 0, 0, tz);
-    }
-
-    // "YYYY-MM-DDTHH:MM[:SS[.SSS]]" without timezone → wall time, local.
-    const wallMatch = trimmed.match(
-        /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/
-    );
-    if (wallMatch) {
-        return wallTimeAsLocalISO(
-            wallMatch[1]!,
-            parseInt(wallMatch[2]!, 10),
-            parseInt(wallMatch[3]!, 10),
-            wallMatch[4] ? parseInt(wallMatch[4], 10) : 0,
-            tz
-        );
-    }
-
-    // Unknown shape — let the server handle/reject.
-    return trimmed;
-}
 
 export function registerNutritionTools(server: McpServer, api: ApiClient) {
     server.tool(
@@ -194,20 +40,16 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         async (params) => {
             const tz = resolveUserTz();
             if (params.date) {
-                const data = await api.get("/api/v1/data/nutrition/entries", {
+                return readTool(api, "nutrition entries", "/api/v1/data/nutrition/entries", {
                     date: normalizeDateParam(params.date, tz),
                     tz,
                 });
-                const warning = api.formatStalenessWarning(data.lastSyncAt);
-                return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
             }
-            const data = await api.get("/api/v1/data/nutrition", {
+            return readTool(api, "nutrition log", "/api/v1/data/nutrition", {
                 from: normalizeDateParam(params.from, tz),
                 to: normalizeDateParam(params.to, tz),
                 tz,
             });
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
         }
     );
 
@@ -387,22 +229,17 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
                 // twice with identical arguments. The backend caches results for
                 // 1 hour, so identical calls within that window dedupe.
                 //
+                // Hashes the ENTIRE normalized payload, not just the core fields.
+                // Hashing a subset meant two calls differing only in micros were
+                // treated as duplicates — so an agent that re-logged an item to
+                // correct its fibre or sodium got the original entry back and the
+                // correction was silently dropped.
+                //
                 // To force a new entry for a genuine repeat meal, pass any
                 // differentiating value (e.g. a timestamp in `notes`, a different
                 // `date`, or a different `numberOfServings`).
                 const idempotencyKey = createHash("sha256")
-                    .update(JSON.stringify({
-                        name: params.name,
-                        calories: params.calories,
-                        protein: params.protein,
-                        carbs: params.carbs,
-                        fat: params.fat,
-                        date: normalizedDate ?? null,
-                        mealType: params.mealType ?? null,
-                        numberOfServings: params.numberOfServings ?? null,
-                        brand: params.brand ?? null,
-                        notes: params.notes ?? null,
-                    }))
+                    .update(stableStringify(payload))
                     .digest("hex");
                 const data = await api.post<{ id: string; createdAt: string }>(
                     "/api/v1/data/nutrition/entries",
@@ -501,9 +338,16 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
                 fields.date = normalizeLogDate(fields.date, resolveUserTz());
             }
             try {
+                // Same content-based dedup as log_food_entry — the backend
+                // honours X-Idempotency-Key on PUT too, so a retried edit
+                // applies once rather than racing itself.
+                const idempotencyKey = createHash("sha256")
+                    .update(stableStringify({ id, ...fields }))
+                    .digest("hex");
                 const data = await api.put<{ id: string; updatedAt: string }>(
                     `/api/v1/data/nutrition/entries/${encodeURIComponent(id)}`,
-                    fields
+                    fields,
+                    { idempotencyKey }
                 );
                 const changed = Object.keys(fields).join(", ");
                 return {
