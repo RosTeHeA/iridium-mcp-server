@@ -247,6 +247,14 @@ serializer (`src/utils/stable-json.ts`) — the two places where a subtle bug
 silently lands a user's food on the wrong day or silently discards a correction.
 Requires Node 22.18+ or 24+ for native TypeScript type stripping.
 
+### Publishing
+
+`tsc` does not clean its output, so **deleting a source file leaves its compiled
+artifact behind in `build/`** — and the `files` field globs all of `build/`, so
+that dead code would ship. After removing any source file, delete the matching
+`build/**` output, then run `npm pack --dry-run` to confirm the tarball contains
+what you expect before publishing.
+
 ## License
 
 MIT
