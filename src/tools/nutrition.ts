@@ -160,6 +160,9 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
         "NOT per-serving values. If the user ate 2 servings of a 200-cal item, send calories: 400. " +
         "Optional: any micros you are confident about (fiber, sugar, sodium, vitamins, etc.) — " +
         "omit values you don't know rather than guessing. " +
+        "WATER: do NOT log drinking water here. This tool has no water field — use `log_hydration`, " +
+        "which is the only thing that feeds the hydration ring the user sees. For a drink that is both " +
+        "food and fluid (shake, juice, milk), log the calories/macros here AND the volume with `log_hydration`. " +
         "The entry appears in the iOS app on the next sync (typically within minutes when the app is foregrounded). " +
         "DATE/TIMEZONE: pass `date` in any of these forms — 'today', 'yesterday', 'YYYY-MM-DD', " +
         "'today T14:00', 'yesterday 14:30', 'YYYY-MM-DDTHH:MM:SS', or a full ISO 8601 timestamp with offset. " +
@@ -212,7 +215,6 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
             riboflavin: optionalMicro.describe("mg"),
             thiamin: optionalMicro.describe("mg"),
             caffeine: optionalMicro.describe("mg"),
-            water: optionalMicro.describe("mL"),
         },
         async (params) => {
             try {
@@ -319,7 +321,6 @@ export function registerNutritionTools(server: McpServer, api: ApiClient) {
             riboflavin: optionalMicro.describe("mg"),
             thiamin: optionalMicro.describe("mg"),
             caffeine: optionalMicro.describe("mg"),
-            water: optionalMicro.describe("mL"),
         },
         async (params) => {
             const { id, ...fields } = params;

@@ -115,6 +115,7 @@ If you installed from source, use the absolute path instead:
 | `get_training_volume` | Get volume adaptation records per muscle group with fatigue and recovery data |
 | `get_trainer_analysis` | Get weekly AI trainer analysis logs with recommendations and insights |
 | `get_weekly_schedule` | Get the planned weekly training schedule |
+| `get_hydration` | Get water intake — individual hydration entries plus per-day totals against the user's hydration goal. Defaults to today |
 | `list_my_foods` | List the user's saved reusable foods ("My Foods") — their homemade shakes, go-to bars, custom meals. Call this first when the user refers to a food by name as if it were already known |
 
 ### Write tools
@@ -123,6 +124,16 @@ If you installed from source, use the absolute path instead:
 |------|-------------|
 | `log_food_entry` | Log a single food entry (name + macros) to the user's Iridium food diary |
 | `update_food_entry` | Update a food entry previously logged via `log_food_entry` — adjust servings, fix a macro, change the meal type, etc. Only works on chat-logged entries |
+| `log_hydration` | Log water into the hydration tracker. Accepts fluid ounces or millilitres |
+| `update_hydration_entry` | Correct a hydration entry previously logged via `log_hydration`. Only works on chat-logged entries |
+
+#### Water and hydration
+
+Water is a **separate record from food**, exactly as it is in the app. `log_hydration` writes to the hydration tracker — the ring the user actually looks at. The `water` field that used to exist on `log_food_entry` has been removed, because a food entry's water value is the water *content of that food* and never reaches the tracker: water logged there looked saved but was invisible where the user checks.
+
+Pass whichever unit the user speaks in — `amountOz` or `amountML` — and the server stores both (16 oz is recorded as 473 mL and reads back as 16 oz).
+
+For a drink that is both food and fluid — a protein shake, juice, milk — log the calories and macros with `log_food_entry` **and** the volume with `log_hydration`. Plain water needs only `log_hydration`.
 
 #### `log_food_entry` notes
 

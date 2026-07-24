@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { ApiClient } from "./api-client.js";
 import { registerWorkoutTools } from "./tools/workouts.js";
 import { registerNutritionTools } from "./tools/nutrition.js";
+import { registerHydrationTools } from "./tools/hydration.js";
 import { registerExerciseTools } from "./tools/exercises.js";
 import { registerBodyTools } from "./tools/body.js";
 import { registerProfileTools } from "./tools/profile.js";
@@ -30,6 +31,7 @@ const server = new McpServer({
 // Register all tools
 registerWorkoutTools(server, apiClient);
 registerNutritionTools(server, apiClient);
+registerHydrationTools(server, apiClient);
 registerExerciseTools(server, apiClient);
 registerBodyTools(server, apiClient);
 registerProfileTools(server, apiClient);
