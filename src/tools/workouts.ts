@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ApiClient } from "../api-client.js";
+import { readTool } from "./shared.js";
 
 export function registerWorkoutTools(server: McpServer, api: ApiClient) {
     server.tool(
@@ -14,17 +15,13 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
             category: z.string().optional().describe("Filter by workout category"),
         },
         async (params) => {
-            const data = await api.get("/api/v1/data/workouts", {
+            return readTool(api, "workout history", "/api/v1/data/workouts", {
                 limit: params.limit,
                 offset: params.offset,
                 from: params.from,
                 to: params.to,
                 category: params.category,
             });
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return {
-                content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }],
-            };
         }
     );
 
@@ -35,11 +32,7 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
             workout_id: z.string().describe("The workout UUID"),
         },
         async (params) => {
-            const data = await api.get(`/api/v1/data/workouts/${params.workout_id}`);
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return {
-                content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }],
-            };
+            return readTool(api, "workout detail", `/api/v1/data/workouts/${encodeURIComponent(params.workout_id)}`);
         }
     );
 }

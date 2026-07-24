@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ApiClient } from "../api-client.js";
+import { readTool } from "./shared.js";
 
 export function registerExerciseTools(server: McpServer, api: ApiClient) {
     server.tool(
@@ -10,9 +11,7 @@ export function registerExerciseTools(server: McpServer, api: ApiClient) {
             exercise_id: z.string().describe("The exercise ID"),
         },
         async (params) => {
-            const data = await api.get(`/api/v1/data/exercises/${params.exercise_id}/progress`);
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
+            return readTool(api, "exercise progress", `/api/v1/data/exercises/${encodeURIComponent(params.exercise_id)}/progress`);
         }
     );
 
@@ -24,12 +23,10 @@ export function registerExerciseTools(server: McpServer, api: ApiClient) {
             limit: z.number().optional().describe("Number of exercises to return PRs for (default 20)"),
         },
         async (params) => {
-            const data = await api.get("/api/v1/data/personal-records", {
+            return readTool(api, "personal records", "/api/v1/data/personal-records", {
                 exercise_name: params.exercise_name,
                 limit: params.limit,
             });
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
         }
     );
 }

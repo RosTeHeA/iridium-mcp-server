@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ApiClient } from "../api-client.js";
+import { readTool } from "./shared.js";
 
 export function registerRecoveryTools(server: McpServer, api: ApiClient) {
     server.tool(
@@ -12,13 +13,11 @@ export function registerRecoveryTools(server: McpServer, api: ApiClient) {
             muscle_group: z.string().optional().describe("Filter by muscle group"),
         },
         async (params) => {
-            const data = await api.get("/api/v1/data/volume-adaptations", {
+            return readTool(api, "training volume", "/api/v1/data/volume-adaptations", {
                 from: params.from,
                 to: params.to,
                 muscle_group: params.muscle_group,
             });
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
         }
     );
 
@@ -29,9 +28,7 @@ export function registerRecoveryTools(server: McpServer, api: ApiClient) {
             limit: z.number().optional().describe("Number of logs to return (default 10, max 50)"),
         },
         async (params) => {
-            const data = await api.get("/api/v1/data/trainer-logs", { limit: params.limit });
-            const warning = api.formatStalenessWarning(data.lastSyncAt);
-            return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) + warning }] };
+            return readTool(api, "trainer analysis", "/api/v1/data/trainer-logs", { limit: params.limit });
         }
     );
 }
