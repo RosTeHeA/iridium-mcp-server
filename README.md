@@ -102,13 +102,13 @@ If you installed from source, use the absolute path instead:
 
 | Tool | Description |
 |------|-------------|
-| `get_workout_history` | Get recent workout history with optional date range and category filtering |
-| `get_workout_detail` | Get full details of a specific workout (exercises, sets, weights, reps, RPE) |
+| `get_workout_history` | Get recent workout history with explicit total/base/added machine-weight semantics and review status |
+| `get_workout_detail` | Get full workout details, including canonical total resistance and base/added breakdowns when available |
 | `get_nutrition_log` | Get daily nutrition summaries (totals + goals + day notes) over a date range — use for trends and goal tracking |
 | `get_food_entries` | Get full individual food entries (name + every nutrient) for a day or date range up to 90 days — use when the question is about what was actually eaten |
 | `get_nutrition_goals` | Get the user's current nutrition intent — goal type (lose / maintain / gain), target weekly rate, and daily calorie / protein / carb / fat targets. Use when coaching or giving recommendations that depend on whether they are cutting, bulking, or maintaining |
-| `get_exercise_progress` | Get performance history and 1RM trends for a specific exercise |
-| `get_personal_records` | Get PRs across all exercises or one exercise — best 1RM, heaviest weight, most reps, and when each was set |
+| `get_exercise_progress` | Get performance and 1RM trends; ambiguous machine history returns `review_required` instead of a load claim |
+| `get_personal_records` | Get PRs across all exercises or one exercise; ambiguous machine-load records are suppressed until reviewed |
 | `get_body_measurements` | Get body measurement history (weight, body fat, etc.) |
 | `get_profile` | Get user profile including training goals, methodology, and experience level |
 | `get_training_summary` | Get aggregate training statistics (total workouts, streaks, patterns) |
@@ -166,10 +166,14 @@ All bare and relative forms are anchored in the user's local timezone (see [Time
 
 Weights and distances are converted **server-side**, from the unit system set in the Iridium app (Settings > Units). Responses that contain either carry a `_units` object describing what you are looking at — this server does not convert anything itself.
 
-Two things worth knowing when reading workout data:
+Four things worth knowing when reading workout data:
 
-- **`weight` is the total load lifted.** On exercises configured as two-dumbbell or dual-stack, the Iridium app displays half that figure. Those sets also carry `per_implement_weight` and `per_implement_label` (`"per dumbbell"` / `"per stack"`) — quote those when describing what the user actually held, and use `weight` for volume math.
+- **Machine sets use an additive v1 weight contract.** `recorded_weight` is the value originally entered; `total_weight` is the canonical resistance for PR, volume, and progression math; and `base_weight + added_weight` describes that same total. `weight_semantics` and `review_status` state how the history was classified. If `review_status` is `review_required`, the recorded value is ambiguous: show it only as recorded history and do not infer total load, PRs, volume, or progression from it.
+- **Legacy servers remain compatible.** When the additive fields are absent, this MCP labels the existing documented `weight` field as `legacy_total`. It does not send a contract-version header or call a separate API version.
+- **Two-dumbbell and dual-stack exercises still expose per-implement values.** The total is authoritative for volume math, while `per_implement_weight` and `per_implement_label` (`"per dumbbell"` / `"per stack"`) describe what the user actually held.
 - **Distances are per-set.** Each set records its own `distance_unit` (`m`, `km`, `mi`, `ft`, `yd`) and `distance` is already expressed in it.
+
+Base-equipment data is read-only through MCP. Classifying older entries or changing a machine's base weight must be done in Iridium so the app can recalculate all dependent history safely.
 
 Body measurements carry a per-measurement `unit`. Mass types (weight, muscle mass, visceral fat mass) are converted to lbs or kg; body fat is a percentage; circumference measurements have a `null` unit because the app stores exactly the number the user typed without recording whether it was cm or inches.
 

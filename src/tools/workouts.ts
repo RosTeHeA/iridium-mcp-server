@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ApiClient } from "../api-client.js";
-import { readTool } from "./shared.js";
+import { readWeightTool } from "./shared.js";
 import { resolveUserTz, normalizeDateParam } from "../utils/dates.js";
 
 export function registerWorkoutTools(server: McpServer, api: ApiClient) {
@@ -9,6 +9,9 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
         "get_workout_history",
         "Get recent workout history with optional filtering by date range or category. " +
         "Returns workout summaries including date, exercises performed, duration, and completion status. " +
+        "Machine sets include recorded_weight (what was entered), total_weight (canonical resistance), " +
+        "base_weight, added_weight, weight_semantics, and review_status when available. Use total_weight " +
+        "for volume or progression. Never treat recorded_weight as total when review_status is review_required. " +
         "Dates accept 'today', 'yesterday', 'YYYY-MM-DD', or a full ISO 8601 timestamp; bare dates are " +
         "interpreted as whole days in the user's LOCAL timezone, so an early-morning session and a " +
         "late-evening one on the same day both come back from a single-day query. " +
@@ -24,7 +27,7 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
         },
         async (params) => {
             const tz = resolveUserTz();
-            return readTool(api, "workout history", "/api/v1/data/workouts", {
+            return readWeightTool(api, "workout history", "/api/v1/data/workouts", "workout", {
                 limit: params.limit,
                 offset: params.offset,
                 from: normalizeDateParam(params.from, tz),
@@ -37,12 +40,14 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
 
     server.tool(
         "get_workout_detail",
-        "Get full details of a specific workout including all exercises, sets, weights, reps, RPE, and block structure.",
+        "Get full details of a specific workout including all exercises, sets, weights, reps, RPE, and block structure. " +
+        "For machine sets, total_weight is canonical; base_weight + added_weight describes that total. " +
+        "Rows marked review_required expose recorded_weight for reference but must not be used for PR, volume, or progression claims.",
         {
             workout_id: z.string().describe("The workout UUID"),
         },
         async (params) => {
-            return readTool(api, "workout detail", `/api/v1/data/workouts/${encodeURIComponent(params.workout_id)}`);
+            return readWeightTool(api, "workout detail", `/api/v1/data/workouts/${encodeURIComponent(params.workout_id)}`, "workout");
         }
     );
 }
