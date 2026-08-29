@@ -5,6 +5,13 @@ type ToolResult = {
     isError?: boolean;
 };
 
+export const BASE_EQUIPMENT_WEIGHT_GUIDANCE =
+    "Weight fields are backward compatible: `weight` remains the legacy total-load field. " +
+    "When present, use `total_weight` for canonical load math, `recorded_weight` for the value originally entered, " +
+    "and `base_weight` plus `added_weight` for reviewed base-equipment sets. Never compare or aggregate a row " +
+    "whose `review_status` is `unclassified` or `review_required`; its total/base/added fields are intentionally null. " +
+    "Older rows without the additive fields remain valid and use `weight` as total load.";
+
 /**
  * Run a read-only GET and render it as a tool result, converting a thrown
  * request error into a readable `isError` result.

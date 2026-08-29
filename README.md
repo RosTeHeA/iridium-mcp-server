@@ -168,7 +168,8 @@ Weights and distances are converted **server-side**, from the unit system set in
 
 Two things worth knowing when reading workout data:
 
-- **`weight` is the total load lifted.** On exercises configured as two-dumbbell or dual-stack, the Iridium app displays half that figure. Those sets also carry `per_implement_weight` and `per_implement_label` (`"per dumbbell"` / `"per stack"`) — quote those when describing what the user actually held, and use `weight` for volume math.
+- **Weight fields are backward compatible.** `weight` remains the legacy total-load field. Newer reviewed base-equipment rows also include `recorded_weight` (what the user originally entered), `total_weight` (canonical total resistance), `base_weight`, `added_weight`, and `review_status`. Prefer `total_weight` for PR, progression, and volume math when it is present. A row with `review_status: "unclassified"` or `"review_required"` is intentionally ambiguous: its total/base/added values are null and it must not be compared or aggregated. Older rows without these additive fields remain valid and use `weight` as total load.
+- **Two-dumbbell and dual-stack values remain explicit.** These sets carry `per_implement_weight` and `per_implement_label` (`"per dumbbell"` / `"per stack"`) — quote those when describing what the user actually held while using canonical total load for volume math.
 - **Distances are per-set.** Each set records its own `distance_unit` (`m`, `km`, `mi`, `ft`, `yd`) and `distance` is already expressed in it.
 
 Body measurements carry a per-measurement `unit`. Mass types (weight, muscle mass, visceral fat mass) are converted to lbs or kg; body fat is a percentage; circumference measurements have a `null` unit because the app stores exactly the number the user typed without recording whether it was cm or inches.

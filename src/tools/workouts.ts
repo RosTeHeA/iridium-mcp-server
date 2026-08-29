@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ApiClient } from "../api-client.js";
-import { readTool } from "./shared.js";
+import { BASE_EQUIPMENT_WEIGHT_GUIDANCE, readTool } from "./shared.js";
 import { resolveUserTz, normalizeDateParam } from "../utils/dates.js";
 
 export function registerWorkoutTools(server: McpServer, api: ApiClient) {
@@ -14,7 +14,7 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
         "late-evening one on the same day both come back from a single-day query. " +
         "To ask about one specific day, pass the SAME date as both `from` and `to`. " +
         "IMPORTANT: a day often contains MORE THAN ONE workout — report every workout in the response, " +
-        "not just the first or the most recent.",
+        "not just the first or the most recent. " + BASE_EQUIPMENT_WEIGHT_GUIDANCE,
         {
             limit: z.number().optional().describe("Number of workouts to return (default 20, max 100)"),
             offset: z.number().optional().describe("Pagination offset"),
@@ -37,7 +37,8 @@ export function registerWorkoutTools(server: McpServer, api: ApiClient) {
 
     server.tool(
         "get_workout_detail",
-        "Get full details of a specific workout including all exercises, sets, weights, reps, RPE, and block structure.",
+        "Get full details of a specific workout including all exercises, sets, weights, reps, RPE, and block structure. " +
+        BASE_EQUIPMENT_WEIGHT_GUIDANCE,
         {
             workout_id: z.string().describe("The workout UUID"),
         },
